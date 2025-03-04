@@ -25,8 +25,8 @@ func main() {
     // Create a new router
     router := http.NewServeMux()
     
-    // Add health endpoint
-    router.Handle("/health", health.Handler())
+    // Add health endpoint (plain text response by default)
+    router.Handle("/health", health.Handle())
     
     // Start server
     server := &http.Server{
@@ -43,7 +43,11 @@ func main() {
 By default, the health endpoint returns plain text responses. To enable JSON responses:
 
 ```go
-router.Handle("/health", health.Handler().WithJSON(true))
+// Enable JSON response
+router.Handle("/health", health.Handle().WithJSON(true))
+
+// Disable JSON response (explicitly)
+router.Handle("/health", health.Handle().WithJSON(false))
 ```
 
 ### Setting Health Status
@@ -71,7 +75,7 @@ health.SetReason("Redis cache unavailable")
 ### Response Format
 
 #### Plain Text (default)
-- When healthy: `UP`
+- When healthy: `UP: `
 - When unhealthy: `DOWN: reason`
 
 #### JSON (when enabled)
@@ -82,6 +86,41 @@ health.SetReason("Redis cache unavailable")
 
 - `200 OK` when the status is UP
 - `503 Service Unavailable` when the status is DOWN
+
+### Example
+
+Here's a complete example showing both plain text and JSON endpoints:
+
+```go
+package main
+
+import (
+    "net/http"
+    
+    "github.com/andres-vara/health"
+)
+
+func main() {
+    router := http.NewServeMux()
+    
+    // Plain text health endpoint
+    router.Handle("/health", health.Handle())
+    
+    // JSON health endpoint
+    router.Handle("/health/json", health.Handle().WithJSON(true))
+    
+    // Toggle health status endpoint
+    router.HandleFunc("/toggle-health", func(w http.ResponseWriter, r *http.Request) {
+        if health.GetStatus() == health.Up {
+            health.SetUnhealthy("Service manually marked as unhealthy")
+        } else {
+            health.SetHealthy()
+        }
+    })
+    
+    http.ListenAndServe(":8080", router)
+}
+```
 
 ## License
 
