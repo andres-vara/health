@@ -25,7 +25,7 @@ func TestHealthHandler(t *testing.T) {
 			useJSON:        false,
 			setStatus:      func() { SetHealthy() },
 			expectedStatus: http.StatusOK,
-			expectedBody:   "UP",
+			expectedBody:   "UP: ",
 		},
 		{
 			name:           "DOWN status with reason in plain text",
@@ -72,10 +72,7 @@ func TestHealthHandler(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			// Create the handler with the appropriate JSON setting
-			handler := NewHandler()
-			if tt.useJSON {
-				handler = handler.WithJSON(true)
-			}
+			handler := Handle().WithJSON(tt.useJSON)
 
 			// Serve the request
 			handler.ServeHTTP(rr, req)
@@ -89,16 +86,16 @@ func TestHealthHandler(t *testing.T) {
 			// Check the response body
 			if tt.checkJSON {
 				// For JSON responses, parse and check the structure
-				var response Response
+				var response responseBody
 				body, _ := io.ReadAll(rr.Body)
 				if err := json.Unmarshal(body, &response); err != nil {
 					t.Errorf("Failed to parse JSON response: %v", err)
 				}
 
 				// Check status
-				expectedStatus := Up
+				expectedStatus := "UP"
 				if tt.expectedStatus != http.StatusOK {
-					expectedStatus = Down
+					expectedStatus = "DOWN"
 				}
 				if response.Status != expectedStatus {
 					t.Errorf("handler returned wrong status: got %v want %v",
@@ -106,7 +103,7 @@ func TestHealthHandler(t *testing.T) {
 				}
 
 				// Check reason for DOWN status
-				if expectedStatus == Down {
+				if expectedStatus == "DOWN" {
 					if response.Reason == "" {
 						t.Error("Expected reason to be set for DOWN status")
 					}
@@ -123,6 +120,38 @@ func TestHealthHandler(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStatusManagement(t *testing.T) {
+	// Test SetHealthy
+	SetHealthy()
+	if status := GetStatus(); status != Up {
+		t.Errorf("SetHealthy failed: got %v want %v", status, Up)
+	}
+	if reason := GetReason(); reason != "" {
+		t.Errorf("SetHealthy should clear reason: got %v want empty", reason)
+	}
+
+	// Test SetUnhealthy
+	SetUnhealthy("Test reason")
+	if status := GetStatus(); status != Down {
+		t.Errorf("SetUnhealthy failed: got %v want %v", status, Down)
+	}
+	if reason := GetReason(); reason != "Test reason" {
+		t.Errorf("SetUnhealthy reason mismatch: got %v want %v", reason, "Test reason")
+	}
+
+	// Test SetStatus
+	SetStatus(Up)
+	if status := GetStatus(); status != Up {
+		t.Errorf("SetStatus failed: got %v want %v", status, Up)
+	}
+
+	// Test SetReason
+	SetReason("New reason")
+	if reason := GetReason(); reason != "New reason" {
+		t.Errorf("SetReason failed: got %v want %v", reason, "New reason")
 	}
 }
 

@@ -17,8 +17,8 @@ func main() {
 	router := http.NewServeMux()
 
 	// Add health endpoints - one with plain text and one with JSON
-	router.Handle("/health", health.Handler())
-	router.Handle("/health/json", health.Handler().WithJSON(true))
+	router.Handle("/health", health.Handle())
+	router.Handle("/health/json", health.Handle().WithJSON(true))
 
 	// Add a route to toggle health status for demonstration
 	router.HandleFunc("/toggle-health", func(w http.ResponseWriter, r *http.Request) {
