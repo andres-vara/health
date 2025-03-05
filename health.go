@@ -43,6 +43,11 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
+func (h *healthHandler) GetResponseStatusCodeAndBody() (int, []byte) {
+	statusCode, body, _ := h.getStatus()
+	return statusCode, body
+}
+
 func (h *healthHandler) getStatus() (int, []byte, bool) {
 	var status Status
 	var reason string
