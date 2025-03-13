@@ -1,11 +1,22 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sync"
+
+	"github.com/andres-vara/shttp"
 )
 
+// We'll define our own type for context keys to avoid dependency on shttp
+type ContextKey string
+
+const (
+	// These match the keys in shttp package
+	LoggerKey   ContextKey = "logger"
+	RequestIDKey ContextKey = "request_id"
+)
 
 type Status string
 
@@ -31,6 +42,7 @@ type healthHandler struct {
 	mutex sync.RWMutex
 }
 
+// ServeHTTP implements the http.Handler interface for standard HTTP servers
 func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	statusCode, body, useJSON := h.getStatus()
 
@@ -41,6 +53,69 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(statusCode)
 
 	_, _ = w.Write(body)
+}
+
+// HealthHandler returns a handler compatible with shttp.Handler interface
+// for use with the shttp package. This uses the default format (plain text or JSON)
+// based on the current settings of the health handler.
+func HealthHandler() shttp.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		// Get status information
+		statusCode, body, useJSON := handler.getStatus()
+
+		// Set appropriate content type
+		if useJSON {
+			w.Header().Set("Content-Type", "application/json")
+		}
+
+		// Forward any request ID from context to response headers for traceability
+		if requestID, ok := ctx.Value("request_id").(string); ok && requestID != "" {
+			w.Header().Set("X-Request-ID", requestID)
+		}
+
+		// Set status code and write response
+		w.WriteHeader(statusCode)
+		_, _ = w.Write(body)
+		
+		return nil
+	}
+}
+
+// JSONHealthHandler returns a handler that always returns JSON responses,
+// regardless of the current handler configuration.
+func JSONHealthHandler() shttp.Handler {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+		// Get the current status but force JSON format
+		handler.mutex.RLock()
+		status := handler.status
+		reason := handler.reason
+		handler.mutex.RUnlock()
+		
+		// Create JSON response
+		body, _ := json.Marshal(responseBody{
+			Status: string(status),
+			Reason: reason,
+		})
+		
+		// Set appropriate headers
+		w.Header().Set("Content-Type", "application/json")
+		
+		// Forward any request ID from context
+		if requestID, ok := ctx.Value("request_id").(string); ok && requestID != "" {
+			w.Header().Set("X-Request-ID", requestID)
+		}
+		
+		// Set status code
+		statusCode := http.StatusOK
+		if status == Down {
+			statusCode = http.StatusServiceUnavailable
+		}
+		
+		w.WriteHeader(statusCode)
+		_, _ = w.Write(body)
+		
+		return nil
+	}
 }
 
 func (h *healthHandler) GetResponseStatusCodeAndBody() (int, []byte) {
