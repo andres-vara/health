@@ -1,6 +1,7 @@
 package health
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -123,6 +124,204 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
+func TestSHTTPHealthHandler(t *testing.T) {
+	// Reset health status before each test
+	SetHealthy()
+
+	tests := []struct {
+		name           string
+		setStatus      func()
+		expectedStatus int
+		requestID      string
+	}{
+		{
+			name:           "UP status with request ID",
+			setStatus:      func() { SetHealthy() },
+			expectedStatus: http.StatusOK,
+			requestID:      "test-request-id",
+		},
+		{
+			name:           "DOWN status with reason and request ID",
+			setStatus:      func() { SetUnhealthy("Test reason") },
+			expectedStatus: http.StatusServiceUnavailable,
+			requestID:      "test-request-id-2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up the health status for this test
+			tt.setStatus()
+
+			// Create a request to pass to our handler
+			req, err := http.NewRequest("GET", "/health", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Create a ResponseRecorder to record the response
+			rr := httptest.NewRecorder()
+
+			// Create context with request ID
+			ctx := context.WithValue(req.Context(), "request_id", tt.requestID)
+
+			// Get the shttp handler
+			handler := HealthHandler()
+
+			// Call the handler with context
+			err = handler(ctx, rr, req)
+			if err != nil {
+				t.Errorf("handler returned error: %v", err)
+			}
+
+			// Check the status code
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v",
+					status, tt.expectedStatus)
+			}
+
+			// Check content type is JSON
+			if contentType := rr.Header().Get("Content-Type"); contentType != "application/json" {
+				t.Errorf("handler returned wrong content type: got %v want %v",
+					contentType, "application/json")
+			}
+
+			// Check that request ID was forwarded to response header
+			if requestID := rr.Header().Get("X-Request-ID"); requestID != tt.requestID {
+				t.Errorf("handler did not forward request ID: got %v want %v",
+					requestID, tt.requestID)
+			}
+
+			// Check the response body is valid JSON
+			var response responseBody
+			body, _ := io.ReadAll(rr.Body)
+			if err := json.Unmarshal(body, &response); err != nil {
+				t.Errorf("Failed to parse JSON response: %v", err)
+			}
+
+			// Check status
+			expectedStatus := "UP"
+			if tt.expectedStatus != http.StatusOK {
+				expectedStatus = "DOWN"
+			}
+			if response.Status != expectedStatus {
+				t.Errorf("handler returned wrong status: got %v want %v",
+					response.Status, expectedStatus)
+			}
+
+			// Check reason for DOWN status
+			if expectedStatus == "DOWN" {
+				if response.Reason == "" {
+					t.Error("Expected reason to be set for DOWN status")
+				}
+			} else {
+				if response.Reason != "" {
+					t.Errorf("Expected no reason for UP status, got: %s", response.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestSHTTPJSONHealthHandler(t *testing.T) {
+	// Reset health status before each test
+	SetHealthy()
+
+	tests := []struct {
+		name           string
+		setStatus      func()
+		expectedStatus int
+		requestID      string
+	}{
+		{
+			name:           "UP status with request ID",
+			setStatus:      func() { SetHealthy() },
+			expectedStatus: http.StatusOK,
+			requestID:      "test-request-id",
+		},
+		{
+			name:           "DOWN status with reason and request ID",
+			setStatus:      func() { SetUnhealthy("Test reason") },
+			expectedStatus: http.StatusServiceUnavailable,
+			requestID:      "test-request-id-2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up the health status for this test
+			tt.setStatus()
+
+			// Create a request to pass to our handler
+			req, err := http.NewRequest("GET", "/health", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Create a ResponseRecorder to record the response
+			rr := httptest.NewRecorder()
+
+			// Create context with request ID
+			ctx := context.WithValue(req.Context(), "request_id", tt.requestID)
+
+			// Get the JSON shttp handler
+			handler := JSONHealthHandler()
+
+			// Call the handler with context
+			err = handler(ctx, rr, req)
+			if err != nil {
+				t.Errorf("handler returned error: %v", err)
+			}
+
+			// Check the status code
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v",
+					status, tt.expectedStatus)
+			}
+
+			// Check content type is JSON
+			if contentType := rr.Header().Get("Content-Type"); contentType != "application/json" {
+				t.Errorf("handler returned wrong content type: got %v want %v",
+					contentType, "application/json")
+			}
+
+			// Check that request ID was forwarded to response header
+			if requestID := rr.Header().Get("X-Request-ID"); requestID != tt.requestID {
+				t.Errorf("handler did not forward request ID: got %v want %v",
+					requestID, tt.requestID)
+			}
+
+			// Check the response body is valid JSON
+			var response responseBody
+			body, _ := io.ReadAll(rr.Body)
+			if err := json.Unmarshal(body, &response); err != nil {
+				t.Errorf("Failed to parse JSON response: %v", err)
+			}
+
+			// Check status
+			expectedStatus := "UP"
+			if tt.expectedStatus != http.StatusOK {
+				expectedStatus = "DOWN"
+			}
+			if response.Status != expectedStatus {
+				t.Errorf("handler returned wrong status: got %v want %v",
+					response.Status, expectedStatus)
+			}
+
+			// Check reason for DOWN status
+			if expectedStatus == "DOWN" {
+				if response.Reason == "" {
+					t.Error("Expected reason to be set for DOWN status")
+				}
+			} else {
+				if response.Reason != "" {
+					t.Errorf("Expected no reason for UP status, got: %s", response.Reason)
+				}
+			}
+		})
+	}
+}
+
 func TestStatusManagement(t *testing.T) {
 	// Test SetHealthy
 	SetHealthy()
@@ -130,7 +329,7 @@ func TestStatusManagement(t *testing.T) {
 		t.Errorf("SetHealthy failed: got %v want %v", status, Up)
 	}
 	if reason := GetReason(); reason != "" {
-		t.Errorf("SetHealthy should clear reason: got %v want empty", reason)
+		t.Errorf("SetHealthy should clear reason: got %v want %v", reason, "")
 	}
 
 	// Test SetUnhealthy
